@@ -15,7 +15,6 @@ defmodule LiveFlop.Query do
       end)
     )
     |> preload(^preloads)
-    |> dbg
   end
 
   defp reduce_binding_join(bind, query, parent) when is_atom(bind) do

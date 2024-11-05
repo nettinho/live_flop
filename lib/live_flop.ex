@@ -30,6 +30,7 @@ defmodule LiveFlop do
   def mount_assigns(route, schema, opts \\ []) do
     {query, opts} = Keyword.pop(opts, :query, schema)
     {filters, opts} = Keyword.pop(opts, :filters, [])
+    {{order_by, order_directions}, opts} = Keyword.pop(opts, :order, {nil, nil})
     {query_functions, opts} = Keyword.pop(opts, :query_functions, [])
     {patch_function, opts} = Keyword.pop!(opts, :patch_function)
 
@@ -37,7 +38,9 @@ defmodule LiveFlop do
       items: [],
       flop_meta: %Flop.Meta{
         flop: %Flop{
-          filters: filters
+          filters: filters,
+          order_by: order_by,
+          order_directions: order_directions
         }
       },
       searchable: %{
@@ -47,6 +50,8 @@ defmodule LiveFlop do
         default_filters: filters,
         query_functions: query_functions,
         patch_function: patch_function,
+        order_by: order_by,
+        order_directions: order_directions,
         opts: opts
       }
     ]
@@ -62,10 +67,18 @@ defmodule LiveFlop do
       schema: schema,
       query: query,
       default_filters: default_filters,
-      query_functions: query_functions
+      query_functions: query_functions,
+      order_by: order_by,
+      order_directions: order_directions
     } = socket.assigns.searchable
 
-    flop = Flop.validate!(params, for: schema)
+    flop =
+      %{
+        "order_by" => order_by,
+        "order_directions" => order_directions
+      }
+      |> Map.merge(params)
+      |> Flop.validate!(for: schema)
 
     {items, meta} =
       query_functions
@@ -74,8 +87,48 @@ defmodule LiveFlop do
 
     [
       flop_meta: meta,
-      items: items
+      items: items,
+      latest_params: params
     ]
+  end
+
+  def fetch_all(socket) do
+    %{
+      schema: schema,
+      query: query,
+      default_filters: default_filters,
+      query_functions: query_functions,
+      order_by: order_by,
+      order_directions: order_directions
+    } = socket.assigns.searchable
+
+    params = socket.assigns.latest_params
+
+    flop =
+      %{
+        "order_by" => order_by,
+        "order_directions" => order_directions,
+        "page_size" => 100
+      }
+      |> Map.merge(params)
+      |> Flop.validate!(for: schema)
+
+    flop = %{flop | filters: flop.filters ++ default_filters}
+
+    flop_query = Enum.reduce(query_functions, query, fn fun, q -> fun.(q, socket.assigns) end)
+
+    fetch_until_end(flop_query, flop, schema)
+  end
+
+  defp fetch_until_end(flop_query, flop, schema, items \\ []) do
+    case Flop.run(flop_query, flop, for: schema) do
+      {page, %{has_next_page?: true}} ->
+        flop = Flop.to_next_page(flop)
+        fetch_until_end(flop_query, flop, schema, items ++ page)
+
+      {page, _} ->
+        items ++ page
+    end
   end
 
   def push_filter(socket, filter, value, opts \\ []) do
@@ -130,7 +183,15 @@ defmodule LiveFlop do
   end
 
   def handle_sort(socket, col) do
-    push_flop_update(socket, &Flop.push_order(&1, col))
+    push_flop_update(socket, &Flop.push_order(&1, col, directions: {:desc, :asc}))
+  end
+
+  def handle_sort(socket, col, "asc") do
+    push_flop_update(socket, &Flop.push_order(&1, col, directions: {:asc, :desc}))
+  end
+
+  def handle_sort(socket, col, "desc") do
+    push_flop_update(socket, &Flop.push_order(&1, col, directions: {:desc, :asc}))
   end
 
   defp empty_as_nil(""), do: nil
@@ -149,6 +210,16 @@ defmodule LiveFlop do
 
       def handle_event("sort", %{"col" => col}, socket),
         do: {:noreply, LiveFlop.handle_sort(socket, col)}
+
+      def handle_event(
+            "sort-change",
+            %{
+              "select-sort-dir" => dir,
+              "select-sort-field" => col
+            },
+            socket
+          ),
+          do: {:noreply, LiveFlop.handle_sort(socket, col, dir)}
     end
   end
 end

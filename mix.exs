@@ -21,8 +21,8 @@ defmodule LiveFlop.MixProject do
   # Run "mix help deps" to learn about dependencies.
   defp deps do
     [
-      {:flop, "~> 0.25.0"},
-      {:flop_phoenix, "~> 0.22.9"}
+      {:flop, "~> 0.26.1"},
+      {:flop_phoenix, "~> 0.22.10"}
     ]
   end
 end
