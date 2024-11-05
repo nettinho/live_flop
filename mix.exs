@@ -22,7 +22,7 @@ defmodule LiveFlop.MixProject do
   defp deps do
     [
       {:flop, "~> 0.26.1"},
-      {:flop_phoenix, "~> 0.22.10"}
+      {:flop_phoenix, "~> 0.23.1"}
     ]
   end
 end
