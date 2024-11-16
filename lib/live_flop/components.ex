@@ -4,37 +4,76 @@ defmodule LiveFlop.Components do
   """
   use Phoenix.Component
 
-  alias Phoenix.LiveView.JS
-
   attr(:name, :string, required: true)
   attr(:class, :string, default: nil)
+  attr(:data_accordion_icon, :string, default: nil)
 
-  def icon(%{name: "hero-" <> _} = assigns) do
+  defp icon(%{name: "hero-" <> _} = assigns) do
     ~H"""
-    <span class={[@name, @class]} />
+    <span class={[@name, @class]} data-accordion-icon={@data_accordion_icon} />
     """
   end
 
+  defp icon(%{name: "svg-" <> file} = assigns) do
+    assigns = assign(assigns, :file, file)
+
+    ~H"""
+    <img
+      src={"/images/#{@file}.svg"}
+      class={["inline", @class]}
+      data-accordion-icon={@data_accordion_icon}
+    />
+    """
+  end
+
+  attr(:flop, :map, required: true)
+  attr(:id, :string, default: "search_bar")
+  attr(:label, :string, default: "Search")
+
+  def search_bar(assigns) do
+    assigns = assign(assigns, query: LiveFlop.flop_query(assigns.flop))
+
+    ~H"""
+    <form class="flex items-center gap-4 p-2" phx-change="search">
+      <label for="simple-search" class="sr-only"><%= @label %></label>
+      <div class="relative w-full">
+        <div class="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
+          <.icon name="hero-magnifying-glass" class="w-5 h-5 text-gray-500 dark:text-gray-400" />
+        </div>
+        <input
+          phx-debounce="200"
+          type="text"
+          name="search_input"
+          id="simple-search"
+          placeholder={@label}
+          required=""
+          value={@query}
+          class="bg-white border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-primary-500 focus:border-primary-500 block w-full pl-10 p-2 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-primary-500 dark:focus:border-primary-500"
+        />
+      </div>
+    </form>
+    """
+  end
+
+  attr(:id, :string, required: true)
   attr(:rows, :list, required: true)
   attr(:row_id, :any, default: nil, doc: "the function for generating the row id")
   attr(:row_click, :any, default: nil, doc: "the function for handling phx-click on each row")
+  attr(:new_item_click, :any, default: nil)
   attr(:flop, :map, default: nil)
-  attr(:gettext, :any, default: &Function.identity/1, doc: "the function gettext function")
+  attr(:sorting, :map, default: %{col: nil, dir: :desc})
+  attr(:search_label, :string)
 
   attr(:row_item, :any,
     default: &Function.identity/1,
     doc: "the function for mapping each row before calling the :col and :action slots"
   )
 
-  attr(:search_text, :string, default: "Search")
-  attr(:filters_text, :string, default: "Filters")
-  attr(:add_text, :string, default: "Add")
-  attr(:showing_text, :string, default: "Showing")
-  attr(:of_text, :string, default: "of")
-
   slot :col, required: true do
     attr(:label, :string)
-    attr(:align_right, :boolean)
+    attr(:align, :atom)
+    attr(:responsive_font, :boolean)
+    attr(:no_wrap, :boolean)
     attr(:sort, :atom)
   end
 
@@ -44,48 +83,26 @@ defmodule LiveFlop.Components do
     attr(:icon, :string)
   end
 
-  slot(:extra_filter, doc: "the slot extra filters")
   slot(:menu_action, doc: "the slot for showing user actions inside menu")
   slot(:action, doc: "the slot for showing user actions in the last table column")
 
   def flop_table(assigns) do
-    assigns = assign(assigns, query: LiveFlop.flop_query(assigns.flop))
+    assigns =
+      case assigns do
+        %{rows: %Phoenix.LiveView.LiveStream{}} ->
+          assign(assigns, row_id: assigns.row_id || fn {id, _item} -> id end)
+
+        _ ->
+          assign(assigns, row_id: assigns.row_id || fn item -> "#{item.id}" end)
+      end
 
     ~H"""
-    <div class="px-4 lg:px-12">
-      <div class="bg-white relative shadow-md sm:rounded-lg overflow-hidden">
+    <div class="px-0 lg:px-12">
+      <div class="bg-white dark:bg-gray-800 relative shadow-md rounded-lg overflow-hidden">
         <div class="flex flex-col mx-4 py-4">
           <div class="flex flex-col md:flex-row items-stretch md:items-center md:space-x-3 space-y-3 md:space-y-0 justify-between">
             <div class="w-full md:w-1/2">
-              <form class="flex items-center gap-4" phx-change="search">
-                <label for="simple-search" class="sr-only"><%= @search_text %></label>
-                <div class="relative w-full">
-                  <div class="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
-                    <.icon
-                      name="hero-magnifying-glass"
-                      class="w-5 h-5 text-gray-500 dark:text-gray-400"
-                    />
-                  </div>
-                  <input
-                    phx-debounce="200"
-                    type="text"
-                    name="search_input"
-                    id="simple-search"
-                    placeholder={@search_text}
-                    required=""
-                    value={@query}
-                    class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-primary-500 focus:border-primary-500 block w-full pl-10 p-2 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-primary-500 dark:focus:border-primary-500"
-                  />
-                </div>
-                <button
-                  :if={not Enum.empty?(@extra_filter)}
-                  class="w-full md:w-auto flex gap-1 items-center justify-center py-2 px-4 text-sm font-medium text-gray-900 focus:outline-none bg-white rounded-lg border border-gray-200 hover:bg-gray-100 hover:text-primary-700 focus:z-10 focus:ring-4 focus:ring-gray-200 dark:focus:ring-gray-700 dark:bg-gray-800 dark:text-gray-400 dark:border-gray-600 dark:hover:text-white dark:hover:bg-gray-700"
-                  type="button"
-                  phx-click={JS.toggle(to: "#searchable-filters")}
-                >
-                  <.icon name="hero-funnel" /> <%= @filters_text %>
-                </button>
-              </form>
+              <.search_bar :if={@flop} id={@id} flop={@flop} label={@search_label} />
             </div>
             <div class="w-full md:w-auto flex flex-col md:flex-row space-y-2 md:space-y-0 items-stretch md:items-center justify-end md:space-x-3 flex-shrink-0">
               <.link
@@ -97,12 +114,9 @@ defmodule LiveFlop.Components do
                   name={Map.get(top_action, :icon, "hero-plus")}
                   class="h-3.5 w-3.5 mr-1.5 -ml-1"
                 />
-                <%= Map.get(top_action, :text, @add_text) %>
+                <%= Map.get(top_action, :text, "Add") %>
               </.link>
             </div>
-          </div>
-          <div :if={not Enum.empty?(@extra_filter)} class="pt-4 w-1/2" id="searchable-filters">
-            <div :for={extra_filter <- @extra_filter}><%= render_slot(extra_filter) %></div>
           </div>
         </div>
         <div class="overflow-x-auto">
@@ -110,45 +124,52 @@ defmodule LiveFlop.Components do
             <thead class="text-xs text-gray-700 uppercase bg-gray-50 dark:bg-gray-700 dark:text-gray-400">
               <tr>
                 <.column_header :for={col <- @col} col={col} flop={@flop} />
-                <th scope="col" class="p-4">
-                  <span class="sr-only">>actions</span>
-                </th>
+                <th :if={@menu_action != []} scope="col" class="p-2 sm:p-4"></th>
               </tr>
             </thead>
-            <tbody>
+            <tbody id={@id} phx-update={match?(%Phoenix.LiveView.LiveStream{}, @rows) && "stream"}>
               <tr
                 :for={row <- @rows}
-                id={"row-#{row.id}"}
+                id={@row_id && @row_id.(row)}
                 class={[
                   "hover:bg-gray-100 dark:hover:bg-gray-700",
                   @row_click && "hover:cursor-pointer"
                 ]}
               >
-                <td :for={col <- @col} phx-click={@row_click && @row_click.(row)} class="px-4 py-3">
-                  <div class={["flex items-center mr-3", Map.get(col, :align_right) && "justify-end"]}>
+                <td
+                  :for={{col, _i} <- Enum.with_index(@col)}
+                  phx-click={@row_click && @row_click.(row)}
+                  class="p-2 sm:px-4 sm:py-3"
+                >
+                  <div class={[
+                    "flex items-center sm:mr-3",
+                    Map.get(col, :align) == :right && "justify-end",
+                    Map.get(col, :align) == :center && "justify-center",
+                    Map.get(col, :responsive_font, false) && "text-xs sm:text-sm",
+                    Map.get(col, :no_wrap, false) && "whitespace-nowrap"
+                  ]}>
                     <%= render_slot(col, @row_item.(row)) %>
                   </div>
                 </td>
 
-                <td class="px-4 py-3 flex items-center justify-end">
+                <td class="p-2 sm:px-4 sm:py-3 flex items-center justify-end">
                   <%= for action <- @action do %>
                     <%= render_slot(action, @row_item.(row)) %>
                   <% end %>
                   <button
                     :if={@menu_action != []}
-                    id={"row-#{row.id}-dropdown-button"}
-                    phx-hook="FlowbiteOnMount"
-                    data-dropdown-toggle={"row-#{row.id}-dropdown"}
+                    id={"#{@row_id.(row)}-dropdown-button"}
+                    data-dropdown-toggle={"#{@row_id.(row)}-dropdown"}
                     class="inline-flex items-center text-sm font-medium hover:bg-gray-100 dark:hover:bg-gray-700 p-1.5 dark:hover-bg-gray-800 text-center text-gray-500 hover:text-gray-800 rounded-lg focus:outline-none dark:text-gray-400 dark:hover:text-gray-100"
                     type="button"
                   >
                     <.icon name="hero-ellipsis-vertical" class="w-5 h-5" />
                   </button>
                   <div
-                    id={"row-#{row.id}-dropdown"}
+                    id={"#{@row_id.(row)}-dropdown"}
                     class="hidden z-10 w-44 bg-white rounded divide-y divide-gray-100 shadow dark:bg-gray-700 dark:divide-gray-600"
                   >
-                    <ul class="py-1 text-sm" aria-labelledby={"row-#{row.id}-dropdown-button"}>
+                    <ul class="py-1 text-sm" aria-labelledby={"#{@row_id.(row)}-dropdown-button"}>
                       <li :for={action <- @menu_action}>
                         <%= render_slot(action, @row_item.(row)) %>
                       </li>
@@ -159,7 +180,7 @@ defmodule LiveFlop.Components do
             </tbody>
           </table>
         </div>
-        <.flop_pagination :if={@flop} flop={@flop} showing_text={@showing_text} of_text={@of_text}/>
+        <.pagination :if={@flop} flop={@flop} />
       </div>
     </div>
     """
@@ -181,7 +202,7 @@ defmodule LiveFlop.Components do
     ~H"""
     <th scope="col">
       <div
-        class="p-4 flex justify-center items-center gap-1 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600"
+        class="p-2 sm:p-4 flex justify-center items-center gap-1 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600"
         phx-click="sort"
         phx-value-col={@col.sort}
       >
@@ -197,42 +218,24 @@ defmodule LiveFlop.Components do
   def column_header(assigns) do
     ~H"""
     <th scope="col">
-      <div class="p-4 flex justify-center items-center">
+      <div class="p-2 sm:p-4 flex justify-center items-center">
         <%= @col.label %>
       </div>
     </th>
     """
   end
 
-  attr(:text, :string, default: "")
-  attr(:icon, :string, default: nil)
-  attr(:red, :boolean, default: false)
-  attr(:rest, :global, include: ~w(patch phx-click data-confirm))
-
-  def flop_table_action(assigns) do
-    ~H"""
-    <.link {@rest}>
-      <button class={[
-        "flex w-full items-center py-2 px-4 hover:bg-gray-100 dark:hover:bg-gray-600",
-        not @red && "dark:hover:text-white text-gray-700 dark:text-gray-200",
-        @red && "text-red-500 dark:hover:text-red-400"
-      ]}>
-        <.icon :if={@icon} name={@icon} class="w-4 h-4 mr-2" /><%= @text %>
-      </button>
-    </.link>
-    """
-  end
-
   attr(:flop, :map, required: true)
-  attr(:showing_text, :string, default: "Showing")
-  attr(:of_text, :string, default: "of")
+  attr(:label_showing, :string, default: "Showing")
+  attr(:label_of, :string, default: "of")
 
-  def flop_pagination(assigns) do
+  def pagination(assigns) do
     meta = assigns.flop
+    default_size = Map.get(meta, :page_size) || 1
     flop = Map.get(meta, :flop)
 
     page = (Map.get(flop, :page) || 1) - 1
-    size = Map.get(flop, :page_size) || 1
+    size = Map.get(flop, :page_size) || default_size
     total_items = Map.get(meta, :total_count, 0)
 
     page_count = Map.get(meta, :total_pages, 0)
@@ -253,126 +256,130 @@ defmodule LiveFlop.Components do
       |> assign(page_count: page_count)
 
     ~H"""
-    <div class="relative overflow-hidden bg-white rounded-b-lg shadow-md dark:bg-gray-800">
+    <div class="relative overflow-hidden bg-gray-100 rounded-lg dark:bg-gray-800">
       <nav
-        class="flex flex-col items-start justify-between p-4 space-y-3 md:flex-row md:items-center md:space-y-0"
+        class="flex flex-col items-start justify-between p-2 space-y-3 md:flex-row md:items-center md:space-y-0"
         aria-label="Table navigation"
       >
         <span class="text-sm font-normal text-gray-500 dark:text-gray-400">
-          <%= @showing_text %>
+          <%= @label_showing %>
           <span class="font-semibold text-gray-900 dark:text-white">
             <%= @min_item %>-<%= @max_item %>
           </span>
-          <%= @of_text %>
+          <%= @label_of %>
           <span class="font-semibold text-gray-900 dark:text-white"><%= @total_items %></span>
         </span>
         <ul :if={@has_pages} class="inline-flex items-stretch -space-x-px">
+          <.pagination_previous disabled={not @has_previous} />
+          <.pagination_button :if={@has_previous} value={1} />
+          <.pagination_ellipsis :if={@has_prev_ellipsis} />
+          <.pagination_button :if={@previous_page} value={@previous_page} />
           <li>
-            <a
-              :if={@has_previous}
-              phx-click="paginate"
-              phx-value-page={:prev}
-              href="#"
-              class="flex items-center justify-center h-full py-1.5 px-3 ml-0 text-gray-500 bg-white rounded-l-lg border border-gray-300 hover:bg-gray-100 hover:text-gray-700 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-white"
-            >
-              <span class="sr-only">Previous</span>
-              <svg
-                class="w-5 h-5"
-                aria-hidden="true"
-                fill="currentColor"
-                viewBox="0 0 20 20"
-                xmlns="http://www.w3.org/2000/svg"
-              >
-                <path
-                  fill-rule="evenodd"
-                  d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z"
-                  clip-rule="evenodd"
-                >
-                </path>
-              </svg>
-            </a>
-          </li>
-          <li :if={@has_previous}>
-            <a
-              phx-click="paginate"
-              phx-value-page={1}
-              class="flex items-center justify-center px-3 py-2 text-sm leading-tight text-gray-500 bg-white border border-gray-300 hover:bg-gray-100 hover:text-gray-700 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-white"
-            >
-              1
-            </a>
-          </li>
-          <li :if={@has_prev_ellipsis}>
-            <span class="select-none flex items-center justify-center px-3 py-2 text-sm leading-tight text-gray-500 bg-white border border-gray-300 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-400">
-              ...
-            </span>
-          </li>
-          <li :if={@previous_page}>
-            <a
-              phx-click="paginate"
-              phx-value-page={@previous_page}
-              class="flex items-center justify-center px-3 py-2 text-sm leading-tight text-gray-500 bg-white border border-gray-300 hover:bg-gray-100 hover:text-gray-700 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-white"
-            >
-              <%= @previous_page %>
-            </a>
-          </li>
-          <li>
-            <span
-              aria-current="page"
-              class="select-none z-10 flex items-center justify-center px-3 py-2 text-sm leading-tight border text-primary-600 bg-primary-50 border-primary-300 hover:bg-primary-100 hover:text-primary-700 dark:border-gray-700 dark:bg-gray-700 dark:text-white"
-            >
+            <span aria-current="page" class={~w(
+                flex items-center justify-center px-3 py-1
+                h-full
+                select-none z-10 leading-tight
+                border border-gray-300 dark:border-gray-600
+                bg-sky-100 dark:bg-sky-700/40
+                text-sm text-gray-900 dark:text-white
+              )}>
               <%= @page %>
             </span>
           </li>
-          <li :if={@next_page}>
-            <a
-              phx-click="paginate"
-              phx-value-page={@next_page}
-              class="flex items-center justify-center px-3 py-2 text-sm leading-tight text-gray-500 bg-white border border-gray-300 hover:bg-gray-100 hover:text-gray-700 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-white"
-            >
-              <%= @next_page %>
-            </a>
-          </li>
-          <li :if={@has_next_ellipsis}>
-            <span class="select-none flex items-center justify-center px-3 py-2 text-sm leading-tight text-gray-500 bg-white border border-gray-300 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-400">
-              ...
-            </span>
-          </li>
-          <li :if={@has_next}>
-            <a
-              phx-click="paginate"
-              phx-value-page={@page_count}
-              class="flex items-center justify-center px-3 py-2 text-sm leading-tight text-gray-500 bg-white border border-gray-300 hover:bg-gray-100 hover:text-gray-700 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-white"
-            >
-              <%= @page_count %>
-            </a>
-          </li>
-          <li>
-            <a
-              :if={@has_next}
-              phx-click="paginate"
-              phx-value-page={:next}
-              class="flex items-center justify-center h-full py-1.5 px-3 leading-tight text-gray-500 bg-white rounded-r-lg border border-gray-300 hover:bg-gray-100 hover:text-gray-700 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-white"
-            >
-              <span class="sr-only">Next</span>
-              <svg
-                class="w-5 h-5"
-                aria-hidden="true"
-                fill="currentColor"
-                viewBox="0 0 20 20"
-                xmlns="http://www.w3.org/2000/svg"
-              >
-                <path
-                  fill-rule="evenodd"
-                  d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z"
-                  clip-rule="evenodd"
-                >
-                </path>
-              </svg>
-            </a>
-          </li>
+          <.pagination_button :if={@next_page} value={@next_page} />
+          <.pagination_ellipsis :if={@has_next_ellipsis} />
+          <.pagination_button :if={@has_next} value={@page_count} />
+          <.pagination_next disabled={not @has_next} />
         </ul>
       </nav>
     </div>
+    """
+  end
+
+  def pagination_previous(assigns) do
+    ~H"""
+    <li>
+      <button disabled={@disabled} phx-click="paginate" phx-value-page={:prev} class={~w(
+                flex items-center justify-center cursor-pointer
+                py-1 px-3 h-full
+                text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-white
+                bg-white hover:bg-sky-50 dark:bg-gray-700 dark:hover:bg-sky-300/20
+                rounded-l-lg border border-gray-300 dark:border-gray-600
+                disabled:bg-gray-50 disabled:dark:bg-gray-800 disabled:cursor-default
+                disabled:hover:bg-gray-50 disabled:dark:hover:bg-gray-800
+                disabled:text-gray-300 disabled:dark:text-gray-600
+                disabled:hover:text-gray-300 disabled:hover:dark:text-gray-600
+              )}>
+        <span class="sr-only">Previous</span>
+        <.icon name="hero-chevron-left" class="w-5 h-5" />
+      </button>
+    </li>
+    """
+  end
+
+  def pagination_next(assigns) do
+    ~H"""
+    <li>
+      <button disabled={@disabled} phx-click="paginate" phx-value-page={:next} class={~w(
+                flex items-center justify-center cursor-pointer
+                py-1 px-3 h-full
+                text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-white
+                bg-white hover:bg-sky-50 dark:bg-gray-700 dark:hover:bg-sky-300/20
+                rounded-r-lg border border-gray-300 dark:border-gray-600
+                disabled:bg-gray-50 disabled:dark:bg-gray-800 disabled:cursor-default
+                disabled:hover:bg-gray-50 disabled:dark:hover:bg-gray-800
+                disabled:text-gray-300 disabled:dark:text-gray-600
+                disabled:hover:text-gray-300 disabled:hover:dark:text-gray-600
+              )}>
+        <span class="sr-only">Previous</span>
+        <.icon name="hero-chevron-right" class="w-5 h-5" />
+      </button>
+    </li>
+    """
+  end
+
+  def pagination_button(assigns) do
+    ~H"""
+    <li>
+      <a phx-click="paginate" phx-value-page={@value} class={~w(
+                flex items-center justify-center
+                px-3 py-1 h-full leading-tight  cursor-pointer
+                text-sm text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-white
+                bg-white hover:bg-sky-50 dark:bg-gray-700 dark:hover:bg-sky-300/20
+                border border-gray-300 dark:border-gray-600
+              )}>
+        <%= @value %>
+      </a>
+    </li>
+    """
+  end
+
+  def pagination_ellipsis(assigns) do
+    ~H"""
+    <li>
+      <span class="select-none flex items-center justify-center px-1 py-1 h-full  text-sm leading-tight text-gray-500 bg-white border border-gray-300 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-400">
+        ...
+      </span>
+    </li>
+    """
+  end
+
+  attr(:text, :string, default: "")
+  attr(:icon, :string, default: nil)
+  attr(:red, :boolean, default: false)
+  attr(:rest, :global, include: ~w(patch phx-click data-confirm))
+
+  def menu_action(assigns) do
+    ~H"""
+    <.link {@rest}>
+      <button class={[
+        "flex w-full items-center py-2 px-4 hover:bg-gray-100 dark:hover:bg-gray-600",
+        not @red && "dark:hover:text-white text-gray-700 dark:text-gray-200",
+        @red && "text-red-500 dark:hover:text-red-400"
+      ]}>
+        <.icon :if={@icon} name={@icon} class="w-4 h-4 mr-2" /><%= @text %>
+      </button>
+    </.link>
     """
   end
 end
