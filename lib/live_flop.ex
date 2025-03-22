@@ -33,6 +33,7 @@ defmodule LiveFlop do
     {{order_by, order_directions}, opts} = Keyword.pop(opts, :order, {nil, nil})
     {query_functions, opts} = Keyword.pop(opts, :query_functions, [])
     {patch_function, opts} = Keyword.pop!(opts, :patch_function)
+    {map_items, opts} = Keyword.pop(opts, :map_items, & &1)
 
     [
       items: [],
@@ -52,6 +53,7 @@ defmodule LiveFlop do
         patch_function: patch_function,
         order_by: order_by,
         order_directions: order_directions,
+        map_items: map_items,
         opts: opts
       }
     ]
@@ -69,7 +71,8 @@ defmodule LiveFlop do
       default_filters: default_filters,
       query_functions: query_functions,
       order_by: order_by,
-      order_directions: order_directions
+      order_directions: order_directions,
+      map_items: map_items
     } = socket.assigns.searchable
 
     flop =
@@ -84,6 +87,8 @@ defmodule LiveFlop do
       query_functions
       |> Enum.reduce(query, fn fun, q -> fun.(q, socket.assigns) end)
       |> Flop.run(%{flop | filters: flop.filters ++ default_filters}, for: schema)
+
+    items = Enum.map(items, map_items)
 
     [
       flop_meta: meta,
